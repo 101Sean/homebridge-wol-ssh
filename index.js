@@ -74,7 +74,7 @@ class WolSshPlatform {
                         reject(err)
                     })
                     .connect({
-                        host:     this.config.domain.replace(/^https?:\/\//, ''),
+                        host:     this.config.domain.replace(/^http?:\/\//, ''),
                         port:     this.config.port,
                         username: this.config.username,
                         password: this.config.password,
@@ -87,18 +87,19 @@ class WolSshPlatform {
     async doWake() {
         const { domain, username, password, targetName } = this.config
         const url = new URL(domain)
+        const host = domain.replace(/^http?:\/\//, '')
 
         // 1) 로그인 → 세션 쿠키 파싱
         const loginResp = await axios.post(
             `${url.origin}/sess-bin/login_handler.cgi`,
             new URLSearchParams({
-                username, passwd: password,
+                username: username, passwd: password,
                 init_status:1, captcha_on:1, default_passwd:'admin',
                 Referer: `${url.origin}/sess-bin/login_session.cgi?noauto=1`
             }).toString(),
             {
                 headers: {
-                    'Content-Type':'application/x-www-form-urlencoded'
+                    'Connection':'keep-alive'
                 }
             }
         )
@@ -113,7 +114,10 @@ class WolSshPlatform {
             `${url.origin}/sess-bin/timepro.cgi?tmenu=iframe&smenu=expertconfwollist`,
             {
                 headers: {
-                    Cookie: sessionCookie
+                    'Connection':'keep-alive',
+                    'Upgrade-Insecure-Requests':1,
+                    'Host': host,
+                    'Cookie': 'efm_session_id=' + sessionCookie
                 }
             }
         )
@@ -131,12 +135,12 @@ class WolSshPlatform {
             `${url.origin}/sess-bin/timepro.cgi`,
             new URLSearchParams({
                 tmenu:'iframe', smenu:'expertconfwollist',
-                nomore:'0', wakeupchk:mac, act:'wake'
+                nomore:0, wakeupchk:mac, act:'wake'
             }).toString(),
             {
                 headers:{
-                    'Content-Type':'application/x-www-form-urlencoded',
-                    Cookie: sessionCookie
+                    'Host': host,
+                    'Cookie': 'efm_session_id=' + sessionCookie
                 }
             }
         )
