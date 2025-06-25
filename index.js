@@ -3,6 +3,15 @@ const axios   = require('axios')
 const cheerio = require('cheerio')
 const { Client } = require('ssh2')
 
+axios.interceptors.request.use(config => {
+    console.log('---- axios 요청 디버그 ----')
+    console.log(config.method.toUpperCase(), config.url)
+    console.log('Headers:', JSON.stringify(config.headers, null, 2))
+    console.log('Body:', config.data)
+    console.log('---------------------------')
+    return config
+})
+
 let Service, Characteristic, UUID
 
 module.exports = (api) => {
