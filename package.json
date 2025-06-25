@@ -4,12 +4,8 @@
   "description": "Homebridge platform for WOL via HTTP + shutdown via SSH",
   "main":        "index.js",
   "engines": {
-    "homebridge": ">=1.0.0"
-  },
-  "dependencies": {
-    "axios":    "^1.0.0",
-    "cheerio":  "^1.0.0",
-    "ssh2":     "^1.11.0"
+    "homebridge": ">=1.0.0",
+    "node":       ">=14.17.0"
   },
   "keywords": [
     "homebridge",
@@ -18,10 +14,21 @@
     "wol",
     "ssh"
   ],
-  "platforms": [
-    {
-      "platform": "WolSshPlatform",
-      "name":     "WOL-SSH Switch"
-    }
-  ]
+  "dependencies": {
+    "axios":    "^1.0.0",
+    "cheerio":  "^1.0.0",
+    "ssh2":     "^1.11.0"
+  },
+  "homebridge": {
+    "platforms": [
+      {
+        "platform": "WolSshPlatform",
+        "name":     "WOL-SSH Switch",
+        "domain":   "http://192.168.1.100:8080",
+        "username": "admin",
+        "password": "password",
+        "targetName":"MyPC"
+      }
+    ]
+  }
 }
