@@ -86,45 +86,60 @@ class WolSshPlatform {
 
     async doWake() {
         const { domain, wolPort, username, password, targetName } = this.config
-        const url = new URL(domain)
-        url.port = wolPort
-        const host = url.host
 
-        // 1) 로그인 → 세션 쿠키 파싱
-        const loginResp = await axios.post(
-            `${url.origin}/sess-bin/login_handler.cgi`,
-            new URLSearchParams({
-                username: username, passwd: password,
-                init_status:1, captcha_on:1, default_passwd:'admin',
-                Referer: `${url.origin}/sess-bin/login_session.cgi?noauto=1`
-            }).toString(),
-            {
+        // 1) URL 세팅
+        const url  = new URL(domain)
+        url.port   = wolPort
+        const origin = url.origin
+        const host   = url.host
+
+        // 유틸: 폼바디와 헤더 계산
+        const makeForm = dataObj => {
+            const body = new URLSearchParams(dataObj).toString()
+            return {
+                body,
                 headers: {
-                    Host:                      host,
-                    Connection:                'keep-alive',
-                    'Content-Type':            'application/x-www-form-urlencoded',
-                    'Upgrade-Insecure-Requests':'1'
+                    Host:           host,
+                    Connection:     'keep-alive',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Length': Buffer.byteLength(body).toString()
                 }
             }
+        }
+
+        // --- 1) 로그인 ---
+        const loginData = {
+            username, passwd: password,
+            init_status:1, captcha_on:1, default_passwd:'admin',
+            Referer: `${origin}/sess-bin/login_session.cgi?noauto=1`
+        }
+        const { body: loginBody, headers: loginHeaders } = makeForm(loginData)
+
+        const loginResp = await axios.post(
+            `${origin}/sess-bin/login_handler.cgi`,
+            loginBody,
+            { headers: loginHeaders }
         )
 
+        // --- 세션 쿠키 파싱 ---
         const cookies = [...loginResp.data.matchAll(/document\.cookie\s*=\s*'([^']+)'/g)]
             .map(m=>m[1])
         if (!cookies.length) throw new Error('세션 쿠키 획득 실패')
         const sessionCookie = cookies.join('; ')
 
-        // 2) MAC 목록 GET → 파싱
+        // --- 공통 GET 헤더 (쿠키 포함) ---
+        const getHeaders = {
+            Host:           host,
+            Connection:     'keep-alive',
+            Cookie:         'efm_session_id=' + sessionCookie
+        }
+
+        // --- 2) MAC 목록 조회 ---
         const listResp = await axios.get(
-            `${url.origin}/sess-bin/timepro.cgi?tmenu=iframe&smenu=expertconfwollist`,
-            {
-                headers: {
-                    Host:                      host,
-                    Connection:                'keep-alive',
-                    'Upgrade-Insecure-Requests':'1',
-                    Cookie:                    'efm_session_id=' + sessionCookie
-                }
-            }
+            `${origin}/sess-bin/timepro.cgi?tmenu=iframe&smenu=expertconfwollist`,
+            { headers: getHeaders }
         )
+
         const $ = cheerio.load(listResp.data)
         const mac = $('tr.wol_main_tr').toArray()
             .map(tr=>$(tr).find('span.wol_main_span').text().trim())
@@ -134,21 +149,15 @@ class WolSshPlatform {
             )[0]
         if (!mac) throw new Error('MAC 주소 파싱 실패')
 
-        // 3) WOL POST
+        // --- 3) WOL POST ---
+        const wakeData = { tmenu:'iframe', smenu:'expertconfwollist', nomore:0, wakeupchk:mac, act:'wake' }
+        const { body: wakeBody, headers: wakeHeaders } = makeForm(wakeData)
+        wakeHeaders.Cookie = 'efm_session_id=' + sessionCookie
+
         await axios.post(
-            `${url.origin}/sess-bin/timepro.cgi`,
-            new URLSearchParams({
-                tmenu:'iframe', smenu:'expertconfwollist',
-                nomore:0, wakeupchk:mac, act:'wake'
-            }).toString(),
-            {
-                headers:{
-                    Host:          host,
-                    Connection:    'keep-alive',
-                    'Content-Type':'application/x-www-form-urlencoded',
-                    Cookie:        'efm_session_id=' + sessionCookie
-                }
-            }
+            `${origin}/sess-bin/timepro.cgi`,
+            wakeBody,
+            { headers: wakeHeaders }
         )
     }
 }
