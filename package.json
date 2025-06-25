@@ -1,20 +1,24 @@
 {
   "name": "homebridge-wol-ssh",
   "version": "1.0.0",
-  "description": "Homebridge accessory to power on via WOL and power off via SSH (TV icon switch)",
+  "description": "Homebridge accessory for WOL on via HTTP and shutdown via SSH",
   "keywords": [
     "homebridge-plugin",
-    "homebridge",
+    "homebridge-accessory",
     "wol",
     "ssh",
     "switch",
     "tv"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/101Sean/homebridge-wol-ssh.git"
+  },
   "author": "Sean",
   "license": "MIT",
   "engines": {
-    "node": ">=14.17.0",
-    "homebridge": ">=1.5.0"
+    "homebridge": ">=1.5.0",
+    "node": ">=14.17.0"
   },
   "main": "index.js",
   "dependencies": {
@@ -24,8 +28,5 @@
   },
   "peerDependencies": {
     "homebridge": ">=1.5.0"
-  },
-  "devDependencies": {
-    "eslint": "^8.0.0"
   }
 }
