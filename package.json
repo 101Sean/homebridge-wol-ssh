@@ -19,14 +19,16 @@
     "cheerio":  "^1.0.0",
     "ssh2":     "^1.11.0"
   },
-  "platforms": [
-    {
-      "platform": "WolSshPlatform",
-      "name":     "WOL-SSH Switch",
-      "domain":   "http://192.168.1.100:8080",
-      "username": "admin",
-      "password": "password",
-      "targetName":"MyPC"
-    }
-  ]
+  "homebridge": {
+    "platforms": [
+      {
+        "platform": "WolSshPlatform",
+        "name":     "WOL-SSH Switch",
+        "domain":   "http://192.168.1.100:8080",
+        "username": "admin",
+        "password": "password",
+        "targetName":"MyPC"
+      }
+    ]
+  }
 }
