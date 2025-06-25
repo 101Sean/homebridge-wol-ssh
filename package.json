@@ -17,8 +17,8 @@
   "author": "Sean",
   "license": "MIT",
   "engines": {
-    "homebridge": ">=1.5.0",
-    "node": ">=14.17.0"
+    "node": ">=14.17.0",
+    "homebridge": ">=1.5.0"
   },
   "main": "index.js",
   "dependencies": {
@@ -29,12 +29,8 @@
   "peerDependencies": {
     "homebridge": ">=1.5.0"
   },
-  "homebridge": {
-    "accessories": [
-      {
-        "accessory": "MyTvPowerSwitch",
-        "name":      "TV Power Switch"
-      }
-    ]
-  }
+  "keywords": [
+    "homebridge-plugin",
+    "homebridge-accessory"
+  ]
 }

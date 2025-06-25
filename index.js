@@ -1,4 +1,3 @@
-// index.js
 const axios   = require('axios')
 const cheerio = require('cheerio')
 const { Client } = require('ssh2')
@@ -67,6 +66,7 @@ class MyTvPowerSwitch {
                     host:     this.config.domain.replace(/^https?:\/\//, ''),
                     port:     300,
                     username: 'sean',
+                    // privateKey 옵션 필요 시 uncomment
                     // privateKey: require('fs').readFileSync('/home/homebridge/.ssh/id_rsa')
                 })
             return
