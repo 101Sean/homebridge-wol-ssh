@@ -11,10 +11,10 @@ module.exports = (api) => {
     UUID           = api.hap.uuid
 
     api.registerPlatform(
-        'homebridge-wol-ssh',   // package.json.name
-        'WolSshPlatform',       // 플랫폼 식별자
+        'homebridge-wol-ssh',
+        'WolSshPlatform',
         WolSshPlatform,
-        true                    // 동적 외부 액세서리 모드
+        true
     )
 }
 
@@ -32,21 +32,16 @@ class WolSshPlatform {
         acc.category = this.api.hap.Categories.SWITCH
 
         const sw = acc.addService(Service.Switch, this.config.name)
-
-        // onSet에는 callback 대신 프로미스 반환 방식 사용
         sw.getCharacteristic(Characteristic.On)
             .onGet(() => false)
-            .onSet(async (value) => {
-                await this.handlePower(value)
-            })
+            .onSet(value => this.handlePower(value))
 
-        this.api.publishExternalAccessories('homebridge-wol-ssh', [ acc ])
+        this.api.publishExternalAccessories('homebridge-wol-ssh', [acc])
         this.log.info('✅ Published WOL-SSH Switch:', this.config.name)
     }
 
     async handlePower(on) {
         if (on) {
-            // Wake-on-LAN
             try {
                 await this.doWake()
                 this.log.info('WOL 실행 성공')
@@ -55,8 +50,8 @@ class WolSshPlatform {
                 throw e
             }
         } else {
-            // SSH를 통한 원격 종료
             return new Promise((resolve, reject) => {
+                const url = new URL(this.config.domain)
                 const conn = new Client()
                 conn.on('ready', () => {
                     this.log.info('SSH 연결됨, 종료 명령 전송')
@@ -74,11 +69,10 @@ class WolSshPlatform {
                         reject(err)
                     })
                     .connect({
-                        host:     this.config.domain.replace(/^https?:\/\//, ''),
+                        host:     url.hostname,
                         port:     this.config.sshPort,
                         username: this.config.username,
                         password: this.config.password,
-                        // 또는 privateKey: require('fs').readFileSync('~/.ssh/id_rsa')
                     })
             })
         }
@@ -86,16 +80,14 @@ class WolSshPlatform {
 
     async doWake() {
         const { domain, wolPort, username, password, targetName } = this.config
+        const url    = new URL(domain)
+        url.port     = wolPort
+        const origin = url.origin           // http://host:port
+        const host   = url.host             // host:port
 
-        // 1) URL 세팅
-        const url  = new URL(domain)
-        url.port   = wolPort
-        const origin = url.origin
-        const host   = url.host
-
-        // 유틸: 폼바디와 헤더 계산
-        const makeForm = dataObj => {
-            const body = new URLSearchParams(dataObj).toString()
+        // 폼 바디 생성 유틸
+        const makeForm = data => {
+            const body = new URLSearchParams(data).toString()
             return {
                 body,
                 headers: {
@@ -107,52 +99,50 @@ class WolSshPlatform {
             }
         }
 
-        // --- 1) 로그인 ---
+        // 1) 로그인 → 세션 ID 추출
         const loginData = {
             username, passwd: password,
             init_status:1, captcha_on:1, default_passwd:'admin',
             Referer: `${origin}/sess-bin/login_session.cgi?noauto=1`
         }
         const { body: loginBody, headers: loginHeaders } = makeForm(loginData)
-
         const loginResp = await axios.post(
             `${origin}/sess-bin/login_handler.cgi`,
             loginBody,
             { headers: loginHeaders }
         )
 
-        // --- 세션 쿠키 파싱 ---
-        const cookies = [...loginResp.data.matchAll(/document\.cookie\s*=\s*'([^']+)'/g)]
-            .map(m=>m[1])
-        if (!cookies.length) throw new Error('세션 쿠키 획득 실패')
-        const sessionCookie = cookies.join('; ')
+        const match = loginResp.data.match(/setCookie\('([^']+)'\)/)
+        if (!match) throw new Error('세션 쿠키 획득 실패')
+        const sessionId = match[1].trim()
 
-        // --- 공통 GET 헤더 (쿠키 포함) ---
+        // 공통 GET 헤더
         const getHeaders = {
-            Host:           host,
-            Connection:     'keep-alive',
-            Cookie:         'efm_session_id=' + sessionCookie
+            Host:       host,
+            Connection: 'keep-alive',
+            Cookie:     `efm_session_id=${sessionId}`
         }
 
-        // --- 2) MAC 목록 조회 ---
+        // 2) MAC 목록 조회 → 파싱
         const listResp = await axios.get(
             `${origin}/sess-bin/timepro.cgi?tmenu=iframe&smenu=expertconfwollist`,
             { headers: getHeaders }
         )
-
         const $ = cheerio.load(listResp.data)
-        const mac = $('tr.wol_main_tr').toArray()
-            .map(tr=>$(tr).find('span.wol_main_span').text().trim())
-            .filter((_,i)=>i%2===0)
-            .filter((_,idx)=>$('tr.wol_main_tr').eq(idx)
-                .find('span.wol_main_span').eq(1).text().trim()===targetName
-            )[0]
-        if (!mac) throw new Error('MAC 주소 파싱 실패')
+        let mac = null
+        $('tr.wol_main_tr').each((_, tr) => {
+            const desc = $(tr).find('td').eq(2).find('.wol_main_span').text().trim()
+            if (desc === targetName) {
+                mac = $(tr).find('input[name="wakeupchk"]').attr('value')
+                return false
+            }
+        })
+        if (!mac) throw new Error(`"${targetName}"에 해당하는 MAC 주소 파싱 실패`)
 
-        // --- 3) WOL POST ---
+        // 3) WOL POST
         const wakeData = { tmenu:'iframe', smenu:'expertconfwollist', nomore:0, wakeupchk:mac, act:'wake' }
         const { body: wakeBody, headers: wakeHeaders } = makeForm(wakeData)
-        wakeHeaders.Cookie = 'efm_session_id=' + sessionCookie
+        wakeHeaders.Cookie = `efm_session_id=${sessionId}`
 
         await axios.post(
             `${origin}/sess-bin/timepro.cgi`,
