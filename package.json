@@ -32,6 +32,7 @@
         "sshPort": 200,
         "username": "admin",
         "password": "password",
+        "sshUsername":"user",
         "targetName": "MyPC"
       }
     ]
