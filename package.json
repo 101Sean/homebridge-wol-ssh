@@ -28,5 +28,13 @@
   },
   "peerDependencies": {
     "homebridge": ">=1.5.0"
+  },
+  "homebridge": {
+    "accessories": [
+      {
+        "accessory": "MyTvPowerSwitch",
+        "name":      "TV Power Switch"
+      }
+    ]
   }
 }
