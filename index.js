@@ -74,8 +74,8 @@ class WolSshPlatform {
                         reject(err)
                     })
                     .connect({
-                        host:     this.config.domain.replace(/^http?:\/\//, ''),
-                        port:     this.config.port,
+                        host:     this.config.domain.replace(/^https?:\/\//, ''),
+                        port:     this.config.sshPort,
                         username: this.config.username,
                         password: this.config.password,
                         // 또는 privateKey: require('fs').readFileSync('~/.ssh/id_rsa')
@@ -85,9 +85,10 @@ class WolSshPlatform {
     }
 
     async doWake() {
-        const { domain, username, password, targetName } = this.config
+        const { domain, wolPort, username, password, targetName } = this.config
         const url = new URL(domain)
-        const host = domain.replace(/^http?:\/\//, '')
+        url.port = wolPort
+        const host = url.host
 
         // 1) 로그인 → 세션 쿠키 파싱
         const loginResp = await axios.post(
@@ -99,7 +100,10 @@ class WolSshPlatform {
             }).toString(),
             {
                 headers: {
-                    'Connection':'keep-alive'
+                    Host:                      host,
+                    Connection:                'keep-alive',
+                    'Content-Type':            'application/x-www-form-urlencoded',
+                    'Upgrade-Insecure-Requests':'1'
                 }
             }
         )
@@ -114,10 +118,10 @@ class WolSshPlatform {
             `${url.origin}/sess-bin/timepro.cgi?tmenu=iframe&smenu=expertconfwollist`,
             {
                 headers: {
-                    'Connection':'keep-alive',
-                    'Upgrade-Insecure-Requests':1,
-                    'Host': host,
-                    'Cookie': 'efm_session_id=' + sessionCookie
+                    Host:                      host,
+                    Connection:                'keep-alive',
+                    'Upgrade-Insecure-Requests':'1',
+                    Cookie:                    'efm_session_id=' + sessionCookie
                 }
             }
         )
@@ -139,8 +143,10 @@ class WolSshPlatform {
             }).toString(),
             {
                 headers:{
-                    'Host': host,
-                    'Cookie': 'efm_session_id=' + sessionCookie
+                    Host:          host,
+                    Connection:    'keep-alive',
+                    'Content-Type':'application/x-www-form-urlencoded',
+                    Cookie:        'efm_session_id=' + sessionCookie
                 }
             }
         )

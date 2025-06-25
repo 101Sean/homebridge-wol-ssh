@@ -1,6 +1,6 @@
 {
   "name":        "homebridge-wol-ssh",
-  "version":     "1.0.2",
+  "version":     "1.0.3",
   "description": "Homebridge platform for WOL via HTTP + shutdown via SSH",
   "main":        "index.js",
   "engines": {
@@ -25,6 +25,8 @@
         "platform": "WolSshPlatform",
         "name":     "WOL-SSH Switch",
         "domain":   "http://192.168.1.100:8080",
+        "wolPort":    100,
+        "sshPort":    200,
         "username": "admin",
         "password": "password",
         "targetName":"MyPC"
