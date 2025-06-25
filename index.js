@@ -3,14 +3,15 @@ const axios   = require('axios')
 const cheerio = require('cheerio')
 const { Client } = require('ssh2')
 
-axios.interceptors.request.use(config => {
-    console.log('---- axios 요청 디버그 ----')
-    console.log(config.method.toUpperCase(), config.url)
-    console.log('Headers:', JSON.stringify(config.headers, null, 2))
-    console.log('Body:', config.data)
-    console.log('---------------------------')
-    return config
-})
+// axios 요청 디버그 (원할 때만 활성화)
+// axios.interceptors.request.use(config => {
+//   console.log('---- axios 요청 디버그 ----')
+//   console.log(config.method.toUpperCase(), config.url)
+//   console.log('Headers:', JSON.stringify(config.headers, null, 2))
+//   console.log('Body:', config.data)
+//   console.log('---------------------------')
+//   return config
+// })
 
 let Service, Characteristic, UUID
 
@@ -91,19 +92,20 @@ class WolSshPlatform {
         const { domain, wolPort, username, password, targetName } = this.config
         const url    = new URL(domain)
         url.port     = wolPort
-        const origin = url.origin           // http://host:port
-        const host   = url.host             // host:port
+        const origin = url.origin           // "http://host:port"
+        const host   = url.host             // "host:port"
 
-        // 폼 바디 생성 유틸
+        // 폼 바디 생성 + 공통 헤더 유틸
         const makeForm = data => {
             const body = new URLSearchParams(data).toString()
             return {
                 body,
                 headers: {
-                    Host:           host,
-                    Connection:     'keep-alive',
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Content-Length': Buffer.byteLength(body).toString()
+                    'Accept':            'text/html',
+                    Host:                host,
+                    Connection:          'keep-alive',
+                    'Content-Type':      'application/x-www-form-urlencoded',
+                    'Content-Length':    Buffer.byteLength(body).toString()
                 }
             }
         }
@@ -120,13 +122,14 @@ class WolSshPlatform {
             loginBody,
             { headers: loginHeaders }
         )
-
+        // setCookie('ID') 패턴에서 추출
         const match = loginResp.data.match(/setCookie\('([^']+)'\)/)
         if (!match) throw new Error('세션 쿠키 획득 실패')
         const sessionId = match[1].trim()
 
-        // 공통 GET 헤더
+        // 공통 GET 헤더 (Accept 포함)
         const getHeaders = {
+            'Accept':   'text/html',
             Host:       host,
             Connection: 'keep-alive',
             Cookie:     `efm_session_id=${sessionId}`
@@ -149,7 +152,13 @@ class WolSshPlatform {
         if (!mac) throw new Error(`"${targetName}"에 해당하는 MAC 주소 파싱 실패`)
 
         // 3) WOL POST
-        const wakeData = { tmenu:'iframe', smenu:'expertconfwollist', nomore:0, wakeupchk:mac, act:'wake' }
+        const wakeData = {
+            tmenu: 'iframe',
+            smenu: 'expertconfwollist',
+            nomore: 0,
+            wakeupchk: mac,
+            act: 'wake'
+        }
         const { body: wakeBody, headers: wakeHeaders } = makeForm(wakeData)
         wakeHeaders.Cookie = `efm_session_id=${sessionId}`
 
