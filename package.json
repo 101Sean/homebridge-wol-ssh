@@ -1,6 +1,6 @@
 {
   "name": "homebridge-wol-ssh",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Homebridge platform for WOL via HTTP + shutdown via SSH",
   "main": "index.js",
   "engines": {
@@ -19,7 +19,8 @@
     "cheerio": "^1.0.0",
     "http": "^0.0.1-security",
     "https": "^1.0.0",
-    "ssh2": "^1.11.0"
+    "ssh2": "^1.11.0",
+    "url": "^0.11.4"
   },
   "homebridge": {
     "platforms": [
