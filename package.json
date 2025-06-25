@@ -13,7 +13,7 @@
   },
   "keywords": [
     "homebridge-plugin",
-    "homebridge-platform",
+    "homebridge",
     "wol",
     "ssh"
   ],
