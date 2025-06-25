@@ -103,7 +103,7 @@ class WolSshPlatform {
                 headers: {
                     'Accept':            'text/html',
                     Host:                host,
-                    Connection:          'keep-alive',
+                    Connection:          'close',
                     'Content-Type':      'application/x-www-form-urlencoded',
                     'Content-Length':    Buffer.byteLength(body).toString()
                 }
@@ -131,7 +131,7 @@ class WolSshPlatform {
         const getHeaders = {
             'Accept':   'text/html',
             Host:       host,
-            Connection: 'keep-alive',
+            Connection: 'close',
             Cookie:     `efm_session_id=${sessionId}`
         }
 
