@@ -12,24 +12,18 @@ module.exports = (api) => {
 
     api.registerPlatform(
         'homebridge-wol-ssh',   // package.json.name
-        'WolSshPlatform',       // platform identifier
+        'WolSshPlatform',       // 플랫폼 식별자
         WolSshPlatform,
-        true                    // dynamic external accessories
+        true                    // 동적 외부 액세서리 모드
     )
 }
 
 class WolSshPlatform {
     constructor(log, config, api) {
-        this.log       = log
-        this.config    = config
-        this.api       = api
-        this.accessories = []
-
+        this.log    = log
+        this.config = config
+        this.api    = api
         api.on('didFinishLaunching', () => this.publishSwitch())
-    }
-
-    configureAccessory(accessory) {
-        this.accessories.push(accessory)
     }
 
     publishSwitch() {
@@ -40,43 +34,36 @@ class WolSshPlatform {
         const sw = acc.addService(Service.Switch, this.config.name)
         sw.getCharacteristic(Characteristic.On)
             .onGet(() => false)
-            .onSet((value, cb) => this.handlePower(value, cb))
+            .onSet((v, cb) => this.handlePower(v, cb))
 
         this.api.publishExternalAccessories('homebridge-wol-ssh', [ acc ])
         this.log.info('✅ Published WOL-SSH Switch:', this.config.name)
     }
 
-    async handlePower(on, callback) {
+    async handlePower(on, cb) {
         if (on) {
             try {
                 await this.doWake()
                 this.log.info('WOL 실행 성공')
-                callback()
-            } catch (err) {
-                this.log.error('WOL 오류', err.message)
-                callback(err)
+                cb()
+            } catch (e) {
+                this.log.error('WOL 오류', e.message)
+                cb(e)
             }
         } else {
             const conn = new Client()
             conn.on('ready', () => {
                 this.log.info('SSH 연결됨, 종료 명령 전송')
                 conn.exec('shutdown /s /t 0', (err, stream) => {
-                    if (err) {
-                        this.log.error('SSH 오류', err)
-                        conn.end()
-                        return callback(err)
-                    }
+                    if (err) return cb(err)
                     stream.on('close', () => {
                         this.log.info('SSH 종료 성공')
                         conn.end()
-                        callback()
+                        cb()
                     })
                 })
             })
-                .on('error', err => {
-                    this.log.error('SSH 연결 실패', err)
-                    callback(err)
-                })
+                .on('error', err => cb(err))
                 .connect({
                     host:     this.config.domain.replace(/^https?:\/\//, ''),
                     port:     300,
@@ -86,75 +73,42 @@ class WolSshPlatform {
         }
     }
 
-    // 로그인 → 쿠키 파싱 → MAC 주소 파싱 → WOL 요청
     async doWake() {
         const { domain, username, password, targetName } = this.config
 
-        // 1) 로그인 핸들러 호출
-        const loginUrl  = `${domain}/sess-bin/login_handler.cgi`
-        const sessionUrl= `${domain}/sess-bin/login_session.cgi?noauto=1`
-        const loginBody = new URLSearchParams({
-            username,
-            passwd:         password,
-            init_status:    1,
-            captcha_on:     1,
-            default_passwd: 'admin',
-            Referer:        sessionUrl
-        }).toString()
+        // 1) 로그인 → 세션 쿠키 파싱
+        const loginResp = await axios.post(
+            `${domain}/sess-bin/login_handler.cgi`,
+            new URLSearchParams({
+                username, passwd: password,
+                init_status:1, captcha_on:1, default_passwd:'admin',
+                Referer: `${domain}/sess-bin/login_session.cgi?noauto=1`
+            }).toString(),
+            { headers: { 'Connection':'keep-alive','Content-Type':'application/x-www-form-urlencoded' } }
+        )
 
-        const loginResp = await axios.post(loginUrl, loginBody, {
-            headers: {
-                'Connection':   'keep-alive',
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-        })
-
-        // 2) document.cookie 스크립트에서 세션 쿠키 추출
-        const cookieRe = /document\.cookie\s*=\s*'([^']+)'/g
-        const cookies = []
-        let m
-        while (m = cookieRe.exec(loginResp.data)) cookies.push(m[1])
+        const cookies = [...loginResp.data.matchAll(/document\.cookie\s*=\s*'([^']+)'/g)]
+            .map(m=>m[1])
         if (!cookies.length) throw new Error('세션 쿠키 획득 실패')
-        const sessionCookies = cookies.join('; ')
-        this.log.debug('세션 쿠키:', sessionCookies)
+        const sessionCookie = cookies.join('; ')
 
-        // 3) 목록 페이지에서 Desktop MAC 파싱
-        const listUrl = `${domain}/sess-bin/timepro.cgi?tmenu=iframe&smenu=expertconfwollist`
-        const listResp = await axios.get(listUrl, {
-            headers: {
-                'Connection':                'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Host':                      new URL(listUrl).host,
-                'Cookie':                    sessionCookies
-            }
-        })
+        // 2) 목록 GET → MAC 주소 추출
+        const listResp = await axios.get(
+            `${domain}/sess-bin/timepro.cgi?tmenu=iframe&smenu=expertconfwollist`,
+            { headers: { 'Connection':'keep-alive','Host':new URL(domain).host,'Cookie':sessionCookie } }
+        )
         const $ = cheerio.load(listResp.data)
-        let macAddress = null
-        $('tr.wol_main_tr').each((_, tr) => {
-            const [mac, name] = $(tr).find('span.wol_main_span')
-                .toArray().map(el => $(el).text().trim())
-            if (name === targetName) macAddress = mac
-        })
-        if (!macAddress) throw new Error('MAC 주소 파싱 실패')
-        this.log.debug('파싱된 MAC:', macAddress)
+        const mac = $('tr.wol_main_tr').toArray()
+            .map(tr=>$(tr).find('span.wol_main_span').text().trim())
+            .filter((_,i)=>i%2===0) // 짝수 인덱스가 MAC
+            .filter((_,idx)=>$('tr.wol_main_tr').eq(idx).find('span.wol_main_span').eq(1).text().trim()===targetName)[0]
+        if (!mac) throw new Error('MAC 주소 파싱 실패')
 
-        // 4) Wake POST 요청
-        const wakeUrl = `${domain}/sess-bin/timepro.cgi`
-        const wakeBody = new URLSearchParams({
-            tmenu:     'iframe',
-            smenu:     'expertconfwollist',
-            nomore:    '0',
-            wakeupchk: macAddress,
-            act:       'wake'
-        }).toString()
-
-        await axios.post(wakeUrl, wakeBody, {
-            headers: {
-                'Host':         new URL(wakeUrl).host,
-                'Connection':   'keep-alive',
-                'Cookie':       sessionCookies,
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-        })
+        // 3) WOL POST
+        await axios.post(
+            `${domain}/sess-bin/timepro.cgi`,
+            new URLSearchParams({ tmenu:'iframe',smenu:'expertconfwollist',nomore:'0',wakeupchk:mac,act:'wake' }).toString(),
+            { headers:{ 'Connection':'keep-alive','Host':new URL(domain).host,'Cookie':sessionCookie,'Content-Type':'application/x-www-form-urlencoded' } }
+        )
     }
 }
