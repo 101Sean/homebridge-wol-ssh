@@ -1,6 +1,6 @@
 {
   "name": "homebridge-wol-ssh",
-  "version": "1.0.4",
+  "version": "1.1",
   "description": "Homebridge platform for WOL via HTTP + shutdown via SSH",
   "main": "index.js",
   "engines": {
@@ -17,6 +17,7 @@
   "dependencies": {
     "axios": "^1.0.0",
     "cheerio": "^1.0.0",
+    "homebridge": "^1.11.0",
     "http": "^0.0.1-security",
     "https": "^1.0.0",
     "ssh2": "^1.11.0",
@@ -32,7 +33,7 @@
         "sshPort": 200,
         "username": "admin",
         "password": "password",
-        "sshUsername":"user",
+        "sshUsername": "user",
         "targetName": "MyPC"
       }
     ]
