@@ -113,55 +113,116 @@ class WolSshPlatform {
     }
 
     async doWake() {
-        const { domain, wolPort, username, password, targetName } = this.config;
-        const url = new URL(domain);
-        url.port = wolPort;
-        const origin = url.origin;
+        const { domain, wolPort, username, password, targetName } = this.config
+        const url  = new URL(domain)
+        url.port   = wolPort
+        const origin = url.origin
+        const host   = url.host
+
+        this.log.info('[doWake] URL:', origin)
 
         // 1) 로그인
-        const loginPath = `${url.pathname}/sess-bin/login_handler.cgi`;
+        const loginPath = `${url.pathname}/sess-bin/login_handler.cgi`
         const loginBody = new URLSearchParams({
-            username, passwd: password, init_status: 1, captcha_on: 1, default_passwd: 'admin'
-        }).toString();
+            username,
+            passwd: password,
+            init_status: 1,
+            captcha_on:  1,
+            default_passwd: 'admin',
+            Referer: `${origin}/sess-bin/login_session.cgi?noauto=1`
+        }).toString()
 
+        this.log.info('[doWake] 로그인 요청')
         const loginResp = await this.httpRequest({
-            protocol: url.protocol, hostname: url.hostname, port: url.port,
-            method: 'POST', path: loginPath,
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-        }, loginBody);
-
-        const match = loginResp.body.match(/setCookie\('([^']+)'\)/);
-        if (!match) throw new Error('세션 쿠키 파싱 실패');
-        const sessionId = match[1].trim();
-
-        // 2) MAC 목록 조회 및 파싱
-        const listPath = `${url.pathname}/sess-bin/timepro.cgi?tmenu=iframe&smenu=expertconfwollist`;
-        const listResp = await this.httpRequest({
-            protocol: url.protocol, hostname: url.hostname, port: url.port,
-            method: 'GET', path: listPath,
-            headers: { Cookie: `efm_session_id=${sessionId}` }
-        });
-
-        const $ = cheerio.load(listResp.body);
-        let mac = null;
-        $('tr.wol_main_tr').each((_, tr) => {
-            const desc = $(tr).find('td').eq(2).find('.wol_main_span').text().trim();
-            if (desc === targetName) {
-                mac = $(tr).find('input[name="wakeupchk"]').attr('value');
-                return false;
+            protocol: url.protocol,
+            hostname: url.hostname,
+            port:     url.port,
+            method:   'POST',
+            path:     loginPath,
+            headers: {
+                Accept:        'text/html',
+                Host:          host,
+                Connection:    'close',
+                'Content-Type':'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(loginBody)
             }
-        });
+        }, loginBody)
 
-        if (!mac) throw new Error(`MAC 파싱 실패: ${targetName}`);
+        this.log.debug('[doWake] 로그인 headers:', loginResp.headers)
+        const match = loginResp.body.match(/setCookie\('([^']+)'\)/)
+        if (!match) throw new Error('세션 쿠키 파싱 실패')
+
+        const sessionId = match[1].trim()
+        this.log.info('[doWake] sessionId:', sessionId)
+
+        // 2) MAC 목록 조회
+        const listPath =
+            `${url.pathname}/sess-bin/timepro.cgi?` +
+            `tmenu=iframe&smenu=expertconfwollist`
+        this.log.info('[doWake] MAC 목록 요청')
+
+        const listResp = await this.httpRequest({
+            protocol: url.protocol,
+            hostname: url.hostname,
+            port:     url.port,
+            method:   'GET',
+            path:     listPath,
+            headers: {
+                Accept:     'text/html',
+                Host:       host,
+                Connection: 'close',
+                Cookie:     `efm_session_id=${sessionId}`
+            }
+        })
+
+        this.log.debug('[doWake] 목록 길이:', listResp.body.length)
+        const $ = cheerio.load(listResp.body)
+
+        let mac = null
+        $('tr.wol_main_tr').each((_, tr) => {
+            const desc = $(tr)
+                .find('td').eq(2)
+                .find('.wol_main_span')
+                .text().trim()
+
+            if (desc === targetName) {
+                mac = $(tr)
+                    .find('input[name="wakeupchk"]')
+                    .attr('value')
+                return false
+            }
+        })
+
+        if (!mac) throw new Error(`MAC 파싱 실패: ${targetName}`)
+        this.log.info('[doWake] MAC:', mac)
 
         // 3) WOL POST
-        const wakePath = `${url.pathname}/sess-bin/timepro.cgi`;
-        const wakeBody = new URLSearchParams({ tmenu: 'iframe', smenu: 'expertconfwollist', wakeupchk: mac, act: 'wake' }).toString();
+        const wakePath = `${url.pathname}/sess-bin/timepro.cgi`
+        const wakeBody = new URLSearchParams({
+            tmenu:      'iframe',
+            smenu:      'expertconfwollist',
+            nomore:     0,
+            wakeupchk:  mac,
+            act:        'wake'
+        }).toString()
 
-        await this.httpRequest({
-            protocol: url.protocol, hostname: url.hostname, port: url.port,
-            method: 'POST', path: wakePath,
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: `efm_session_id=${sessionId}` }
-        }, wakeBody);
+        this.log.info('[doWake] WOL 요청')
+        const wakeResp = await this.httpRequest({
+            protocol: url.protocol,
+            hostname: url.hostname,
+            port:     url.port,
+            method:   'POST',
+            path:     wakePath,
+            headers: {
+                Accept:         'text/html',
+                Host:           host,
+                Connection:     'close',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(wakeBody),
+                Cookie:         `efm_session_id=${sessionId}`
+            }
+        }, wakeBody)
+
+        this.log.info('[doWake] WOL 상태코드:', wakeResp.statusCode)
     }
 }
