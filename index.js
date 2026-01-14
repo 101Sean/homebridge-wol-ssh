@@ -1,4 +1,5 @@
 const { Client } = require('ssh2');
+const net = require('net');
 const http = require('http');
 const https = require('https');
 const cheerio = require('cheerio');
@@ -21,8 +22,12 @@ class WolSshPlatform {
         this.config   = config;
         this.api      = api;
         this.sshUser  = config.sshUsername || config.username;
+        this.isOnline = false;
 
-        api.on('didFinishLaunching', () => this.publishTVAccessory());
+        api.on('didFinishLaunching', () => {
+            this.publishTVAccessory();
+            setInterval(() => this.checkPCStatus(), 10000);
+        });
     }
 
     publishTVAccessory() {
@@ -31,25 +36,23 @@ class WolSshPlatform {
 
         acc.category = Categories.TELEVISION;
 
-        const tvService = acc.addService(Service.Television, this.config.name);
+        this.tvService = acc.addService(Service.Television, this.config.name);
 
-        tvService.setCharacteristic(Characteristic.ConfiguredName, this.config.name);
-        tvService.setCharacteristic(Characteristic.SleepDiscoveryMode, Characteristic.SleepDiscoveryMode.ALWAYS_DISCOVERABLE);
+        this.tvService.setCharacteristic(Characteristic.ConfiguredName, this.config.name);
+        this.tvService.setCharacteristic(Characteristic.SleepDiscoveryMode, Characteristic.SleepDiscoveryMode.ALWAYS_DISCOVERABLE);
 
-        tvService.getCharacteristic(Characteristic.Active)
-            .onGet(() => Characteristic.Active.INACTIVE)
+        this.tvService.getCharacteristic(Characteristic.Active)
+            .onGet(() => this.isOnline ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE)
             .onSet(async (value) => {
                 if (value === Characteristic.Active.ACTIVE) {
                     this.log.info('[Power] PC 켜기 명령 실행 (WOL)');
                     await this._powerOn();
+                    this.isOnline = true;
                 } else {
                     this.log.info('[Power] PC 끄기 명령 실행 (SSH)');
                     await this._powerOff();
+                    this.isOnline = false;
                 }
-
-                setTimeout(() => {
-                    tvService.updateCharacteristic(Characteristic.Active, Characteristic.Active.INACTIVE);
-                }, 5000);
             });
 
         this.api.publishExternalAccessories('homebridge-wol-ssh', [acc]);
@@ -224,5 +227,45 @@ class WolSshPlatform {
         }, wakeBody)
 
         this.log.info('[doWake] WOL 상태코드:', wakeResp.statusCode)
+    }
+
+    checkPCStatus() {
+        const urlData = new URL(this.config.domain);
+        const hostname = urlData.hostname;
+        const port = this.config.sshPort || 22;
+
+        const socket = new net.Socket();
+        socket.setTimeout(2000);
+
+        socket.once('connect', () => {
+            this._updateState(true);
+            socket.destroy();
+        });
+
+        socket.once('timeout', () => {
+            this._updateState(false);
+            socket.destroy();
+        });
+
+        socket.once('error', () => {
+            this._updateState(false);
+            socket.destroy();
+        });
+
+        socket.connect(port, hostname);
+    }
+
+    _updateState(newState) {
+        if (this.isOnline !== newState) {
+            this.isOnline = newState;
+            this.log.info(`[Status] PC가 ${this.isOnline ? '온라인' : '오프라인'} 상태입니다.`);
+
+            if (this.tvService) {
+                this.tvService.updateCharacteristic(
+                    Characteristic.Active,
+                    this.isOnline ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE
+                );
+            }
+        }
     }
 }
